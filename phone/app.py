@@ -47,9 +47,16 @@ PORT = 8000
 
 # The ESP32 is the SoftAP gateway at a fixed IP; overridable for host-side tests.
 ESP32_CAPTURE_URL = os.environ.get("ESP32_CAPTURE_URL", "http://192.168.4.1/capture")
-CAPTURE_TIMEOUT_S = 10
-CAPTURE_ATTEMPTS = 2      # retry once on a transient network hiccup ...
-RETRY_DELAY_S = 1.5       # ... after this pause (AP re-association time)
+# Timeout covers flash settle + warm-up frame + capture retry + JPEG TX over SoftAP.
+# 15 s gives comfortable headroom for a 100 KB SVGA frame without the phone
+# abandoning a slow-but-in-progress transfer and triggering a second /capture.
+CAPTURE_TIMEOUT_S = 15
+# No retry: the double-flash symptom was caused by CAPTURE_ATTEMPTS=2. When
+# attempt 0 timed out the ESP32 was still mid-capture; attempt 1 fired a second
+# GET /capture -> second flash. With brownout ruled out (charger power, /log
+# shows climbing uptime) one honest failure is better than a duplicate capture.
+CAPTURE_ATTEMPTS = 1
+RETRY_DELAY_S = 1.5       # kept for future use; unused when CAPTURE_ATTEMPTS==1
 
 STUB_PLATE = "TEST123"              # placeholder; real plate arrives in Unit 05
 STUB_CONFIDENCE = 1.0

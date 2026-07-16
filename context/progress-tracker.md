@@ -70,6 +70,41 @@ Update this file after every meaningful implementation change.
   https://github.com/zamir-542/ANPRESP32CAM). Phone now syncs via `git pull` in
   Termux instead of manual copy. Verified no secrets/data/local-settings tracked.
 
+- **Bug-fix session — intermittent `camera_unreachable` + double-flash (post Unit 03).**
+  Symptoms on hardware: capture count stuck, occasional `camera_unreachable`, and
+  — the key diagnostic — the flash LED visibly firing **twice** on a single button
+  tap. Brownout was ruled out (moved board to 5 V/2 A phone charger; `/log` showed
+  uptime_ms climbing continuously, no near-zero resets).
+
+  **Root cause of double-flash / half of the `camera_unreachable` reports:**
+  `CAPTURE_ATTEMPTS = 2` in `phone/app.py`. `urlopen(timeout=10)` applies to the
+  *read* of the response body, not just the connection. If the ESP32 was slow
+  transmitting a large SVGA JPEG (or sendContent stalled briefly), the phone's
+  read timed out after 10 s, treated the attempt as failed, waited 1.5 s, and sent
+  a **second** GET `/capture` — which the ESP32 accepted and executed, firing the
+  flash again.
+
+  **Root cause of `camera_unreachable` (secondary):** `blinkOk()` / `blinkErr()`
+  ran *inside* `handleCapture()`, blocking `loop()` from calling `handleClient()`
+  for 150–480 ms. Any TCP connection the phone attempted during that window could
+  not be accepted yet.
+
+  **Fixes applied:**
+
+  `phone/app.py`:
+  - `CAPTURE_ATTEMPTS`: `2` → `1`. No retry. One honest failure is better than a
+    duplicate capture that causes a second flash and inflates `camera_unreachable`.
+  - `CAPTURE_TIMEOUT_S`: `10` → `15`. Gives the ESP32 headroom to transmit a full
+    100 KB SVGA JPEG over SoftAP without the phone abandoning mid-transfer.
+
+  `firmware/platescope/platescope.ino`:
+  - Flash LED turned **OFF immediately after the frame is grabbed**, before the
+    slow `server.sendContent()` call — cuts the current spike to the minimum.
+  - `blinkOk()` / `blinkErr()` **deferred out of `handleCapture()`** via a new
+    `BlinkPending` enum flag (`g_blink_pending`). `loop()` drains it after
+    `handleClient()` returns, so the blocking delay never holds up the HTTP server
+    from accepting the next queued connection.
+
 ## In Progress
 
 - None.

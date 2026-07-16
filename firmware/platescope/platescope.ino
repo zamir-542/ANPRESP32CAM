@@ -44,12 +44,13 @@ static void logLine(const String& s) {
 volatile uint32_t g_sta_joined = 0;
 volatile uint32_t g_sta_left = 0;
 
-// ── Forward declarations ─────────────────────────────────────────────────────
-static void startAP();
-static bool initCamera();
-static void handleCapture();
-static void blinkOk();
-static void blinkErr();
+// ── Deferred blink flag ─────────────────────────────────────────────────────
+// Blink helpers block (delay). Running them inside handleCapture() holds up
+// loop() from calling handleClient() for the next queued request. Instead,
+// handleCapture() sets this flag and loop() drains it after handleClient().
+enum class BlinkPending : uint8_t { NONE, OK, ERR };
+static BlinkPending g_blink_pending = BlinkPending::NONE;
+
 
 // ── LED helpers ──────────────────────────────────────────────────────────────
 
@@ -185,11 +186,14 @@ static void handleCapture() {
     }
   }
 
+  // Turn the flash off as soon as the frame is in hand — don't hold the
+  // current spike on for the duration of the TCP transfer below.
+  flashOff();
+
   if (!fb) {
-    flashOff();
     logLine("[ERR] capture failed (no complete frame)");
     server.send(500, "text/plain", "capture failed");
-    blinkErr();
+    g_blink_pending = BlinkPending::ERR;  // blink after handleClient() returns
     return;
   }
 
@@ -199,9 +203,9 @@ static void handleCapture() {
   server.sendContent((const char*) fb->buf, fb->len);
 
   esp_camera_fb_return(fb);
-  flashOff();
-  blinkOk();
+  g_blink_pending = BlinkPending::OK;    // blink after handleClient() returns
 }
+
 
 // ── Arduino entry points ──────────────────────────────────────────────────────
 
@@ -238,6 +242,14 @@ void setup() {
 
 void loop() {
   server.handleClient();
+
+  // Drain the deferred blink flag. Blinking inside handleCapture() would hold
+  // up handleClient() for 150-480 ms; doing it here keeps the server responsive.
+  if (g_blink_pending != BlinkPending::NONE) {
+    if (g_blink_pending == BlinkPending::OK)  blinkOk();
+    else                                      blinkErr();
+    g_blink_pending = BlinkPending::NONE;
+  }
 
   // Log station join/leave from the main task (see onWifiEvent).
   static uint32_t seen_joined = 0, seen_left = 0;
