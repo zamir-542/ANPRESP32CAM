@@ -62,14 +62,35 @@ static void flashOff() {
 
 // Bring up the device's own access point. The phone joins this SSID; there is
 // no router or internet involved. The ESP32 is the gateway at 192.168.4.1.
+//
+// Diagnostic: log every station join/leave. If serial shows "station left"
+// right before a failed capture, the phone is dropping off the AP (Android
+// power-save / roaming) — the problem is not the ESP32.
+static void onWifiEvent(WiFiEvent_t event) {
+  switch (event) {
+    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
+      Serial.println("[WIFI] station joined the AP");
+      break;
+    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
+      Serial.println("[WIFI] station LEFT the AP");
+      break;
+    default:
+      break;
+  }
+}
+
 static void startAP() {
   Serial.println("[WIFI] starting access point ...");
   WiFi.mode(WIFI_AP);
+  WiFi.onEvent(onWifiEvent);
+  WiFi.setSleep(false);  // no modem power-save: fewer latency spikes/drops
 
-  if (WiFi.softAP(AP_SSID, AP_PASSWORD)) {
+  if (WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL)) {
     Serial.print("[WIFI] AP up — SSID \"");
     Serial.print(AP_SSID);
-    Serial.print("\", gateway ");
+    Serial.print("\", channel ");
+    Serial.print(AP_CHANNEL);
+    Serial.print(", gateway ");
     Serial.println(WiFi.softAPIP());              // 192.168.4.1 by default
   } else {
     Serial.println("[ERR] AP start failed");

@@ -20,6 +20,7 @@ import os
 import socket
 import sqlite3
 import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -47,6 +48,8 @@ PORT = 8000
 # The ESP32 is the SoftAP gateway at a fixed IP; overridable for host-side tests.
 ESP32_CAPTURE_URL = os.environ.get("ESP32_CAPTURE_URL", "http://192.168.4.1/capture")
 CAPTURE_TIMEOUT_S = 10
+CAPTURE_ATTEMPTS = 2      # retry once on a transient network hiccup ...
+RETRY_DELAY_S = 1.5       # ... after this pause (AP re-association time)
 
 STUB_PLATE = "TEST123"              # placeholder; real plate arrives in Unit 05
 STUB_CONFIDENCE = 1.0
@@ -141,10 +144,18 @@ def trigger():
     if not _capture_lock.acquire(blocking=False):
         return jsonify(ok=False, reason="busy"), 429
     try:
-        try:
-            with urllib.request.urlopen(ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S) as resp:
-                raw = resp.read(MAX_UPLOAD_BYTES + 1)
-        except (urllib.error.URLError, OSError, socket.timeout):
+        raw = None
+        for attempt in range(CAPTURE_ATTEMPTS):
+            try:
+                with urllib.request.urlopen(
+                    ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S
+                ) as resp:
+                    raw = resp.read(MAX_UPLOAD_BYTES + 1)
+                break
+            except (urllib.error.URLError, OSError, socket.timeout):
+                if attempt + 1 < CAPTURE_ATTEMPTS:
+                    time.sleep(RETRY_DELAY_S)  # give the AP link a beat to recover
+        if raw is None:
             return jsonify(ok=False, reason="camera_unreachable"), 502
 
         if len(raw) > MAX_UPLOAD_BYTES:
