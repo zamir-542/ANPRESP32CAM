@@ -1,0 +1,17 @@
+# Secrets — WiFi credentials + phone IP (Unit 02). Never commit.
+# Pattern covers firmware/<sketch>/secrets.h at any nesting depth.
+firmware/**/secrets.h
+
+# Personal data — captured plate imagery and the read log. Never commit.
+phone/captures/
+phone/reads.db
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Claude Code local settings (personal, not shared)
+.claude/settings.local.json

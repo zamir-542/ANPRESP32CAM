@@ -1,0 +1,12 @@
+# PlateScope phone server (Unit 01)
+#
+# ON TERMUX (the real runtime): do NOT pip-install pillow — it fails trying to
+# compile C source. Install the prebuilt package instead:
+#     pkg install python-pillow
+#     pip install flask
+#
+# ON A DESKTOP venv (PC testing): pip install -r requirements.txt works as-is.
+#
+# sqlite3 is stdlib — not listed here.
+flask
+pillow   # guarded JPEG decode (Termux: `pkg install python-pillow`, not pip)

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="3">
+  <title>PlateScope</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 16px;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 1.25rem; margin: 0; }
+    .count { color: var(--muted); font-size: 0.85rem; }
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    #capture {
+      flex: 1;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    #capture:disabled { opacity: 0.6; cursor: default; }
+    #status { color: var(--muted); font-size: 0.85rem; min-width: 5.5rem; }
+    #status.err { color: #f85149; }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 48px 16px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+    .card img {
+      display: block;
+      width: 100%;
+      max-height: 240px;
+      object-fit: contain;
+      background: #000;
+    }
+    .card .body { padding: 12px 14px; }
+    .plate {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 6px;
+    }
+    footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PlateScope</h1>
+    <span class="count">{{ reads|length }} capture{{ '' if reads|length == 1 else 's' }}</span>
+  </header>
+
+  <div class="bar">
+    <button id="capture" type="button">📷 Capture</button>
+    <span id="status"></span>
+  </div>
+
+  {% if reads %}
+    {% for r in reads %}
+      <article class="card">
+        <img src="{{ url_for('capture', read_id=r['id']) }}" alt="capture {{ r['id'] }}">
+        <div class="body">
+          <div class="plate">{{ r['plate'] }}</div>
+          <div class="meta">
+            <span>conf {{ '%.2f'|format(r['confidence']) }}</span>
+            <span>{{ r['created_at'] }}</span>
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No captures yet — press BOOT on the camera.</div>
+  {% endif %}
+
+  <footer>Published screenshots must blur plate digits.</footer>
+
+  <script>
+    const btn = document.getElementById('capture');
+    const status = document.getElementById('status');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      status.className = '';
+      status.textContent = 'Capturing…';
+      try {
+        const res = await fetch('/trigger', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          status.textContent = 'Captured ✓';
+          location.reload();
+          return;
+        }
+        status.className = 'err';
+        status.textContent = 'Failed: ' + (data.reason || res.status);
+      } catch (e) {
+        status.className = 'err';
+        status.textContent = 'Failed: network';
+      }
+      btn.disabled = false;
+    });
+  </script>
+</body>
+</html>
