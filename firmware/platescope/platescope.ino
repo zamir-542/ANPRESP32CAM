@@ -23,6 +23,27 @@
 
 WebServer server(CAM_HTTP_PORT);
 
+// ── On-device log (readable over Wi-Fi at /log) ─────────────────────────────
+// Serial is unavailable when the board runs from a charger, so every log line
+// is also kept in a small RAM buffer served at http://192.168.4.1/log.
+// /log starts with uptime_ms: if it is near zero right after a failure, the
+// board just rebooted (brownout) — visible with no PC attached.
+static String g_log;
+
+static void logLine(const String& s) {
+  Serial.println(s);
+  g_log += s;
+  g_log += '\n';
+  if (g_log.length() > 4000) {              // keep the tail, drop old lines
+    g_log = g_log.substring(g_log.length() - 3000);
+  }
+}
+
+// WiFi events fire on another task — only bump counters there; the log String
+// is touched exclusively from the main loop task (no cross-task races).
+volatile uint32_t g_sta_joined = 0;
+volatile uint32_t g_sta_left = 0;
+
 // ── Forward declarations ─────────────────────────────────────────────────────
 static void startAP();
 static bool initCamera();
@@ -69,10 +90,10 @@ static void flashOff() {
 static void onWifiEvent(WiFiEvent_t event) {
   switch (event) {
     case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-      Serial.println("[WIFI] station joined the AP");
+      g_sta_joined = g_sta_joined + 1;   // logged from loop()
       break;
     case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-      Serial.println("[WIFI] station LEFT the AP");
+      g_sta_left = g_sta_left + 1;       // logged from loop()
       break;
     default:
       break;
@@ -86,14 +107,10 @@ static void startAP() {
   WiFi.setSleep(false);  // no modem power-save: fewer latency spikes/drops
 
   if (WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL)) {
-    Serial.print("[WIFI] AP up — SSID \"");
-    Serial.print(AP_SSID);
-    Serial.print("\", channel ");
-    Serial.print(AP_CHANNEL);
-    Serial.print(", gateway ");
-    Serial.println(WiFi.softAPIP());              // 192.168.4.1 by default
+    logLine(String("[WIFI] AP up — SSID \"") + AP_SSID + "\", channel " +
+            AP_CHANNEL + ", gateway " + WiFi.softAPIP().toString());
   } else {
-    Serial.println("[ERR] AP start failed");
+    logLine("[ERR] AP start failed");
   }
 }
 
@@ -129,10 +146,10 @@ static bool initCamera() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("[ERR] camera init 0x%x\n", err);
+    logLine(String("[ERR] camera init 0x") + String(err, HEX));
     return false;
   }
-  Serial.println("[CAM] init ok");
+  logLine("[CAM] init ok");
   return true;
 }
 
@@ -160,7 +177,8 @@ static void handleCapture() {
   for (uint8_t attempt = 0; attempt < CAPTURE_RETRIES; attempt++) {
     fb = esp_camera_fb_get();
     if (frameLooksComplete(fb)) break;
-    Serial.printf("[CAM] corrupt/empty frame (attempt %u) — retrying\n", attempt + 1);
+    logLine(String("[CAM] corrupt/empty frame (attempt ") + (attempt + 1) +
+            ") — retrying");
     if (fb) {
       esp_camera_fb_return(fb);
       fb = nullptr;
@@ -169,13 +187,13 @@ static void handleCapture() {
 
   if (!fb) {
     flashOff();
-    Serial.println("[ERR] capture failed (no complete frame)");
+    logLine("[ERR] capture failed (no complete frame)");
     server.send(500, "text/plain", "capture failed");
     blinkErr();
     return;
   }
 
-  Serial.printf("[CAM] captured %u bytes\n", (unsigned) fb->len);
+  logLine(String("[CAM] captured ") + fb->len + " bytes");
   server.setContentLength(fb->len);
   server.send(200, "image/jpeg", "");
   server.sendContent((const char*) fb->buf, fb->len);
@@ -207,11 +225,28 @@ void setup() {
   }
 
   server.on("/capture", HTTP_GET, handleCapture);
+  // Diagnostics without a PC: recent log lines + uptime, over Wi-Fi.
+  server.on("/log", HTTP_GET, []() {
+    String out = String("uptime_ms=") + millis() + "\n" + g_log;
+    server.send(200, "text/plain", out);
+  });
   server.begin();
-  Serial.println("[HTTP] capture server on http://192.168.4.1/capture");
-  Serial.println("[SYS] ready — connect the phone to the AP and tap Capture");
+  logLine("[HTTP] capture server on http://192.168.4.1/capture");
+  logLine("[HTTP] on-device log at http://192.168.4.1/log");
+  logLine("[SYS] ready — connect the phone to the AP and tap Capture");
 }
 
 void loop() {
   server.handleClient();
+
+  // Log station join/leave from the main task (see onWifiEvent).
+  static uint32_t seen_joined = 0, seen_left = 0;
+  while (seen_joined < g_sta_joined) {
+    seen_joined++;
+    logLine("[WIFI] station joined the AP");
+  }
+  while (seen_left < g_sta_left) {
+    seen_left++;
+    logLine("[WIFI] station LEFT the AP");
+  }
 }
