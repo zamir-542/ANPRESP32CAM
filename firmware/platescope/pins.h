@@ -43,9 +43,13 @@ constexpr int HREF_GPIO_NUM  = 23;
 constexpr int PCLK_GPIO_NUM  = 22;
 
 // ── Camera capture settings (tunable in Unit 06) ────────────────────────────
-constexpr uint32_t XCLK_FREQ_HZ    = 20000000;  // 20 MHz camera master clock
+// XCLK at 10 MHz (not 20): the widely-known fix for corrupted / bottom-black
+// JPEGs on AI-Thinker clone boards. Slower frame rate — irrelevant for
+// single-shot capture.
+constexpr uint32_t XCLK_FREQ_HZ    = 10000000;  // 10 MHz camera master clock
 constexpr int      JPEG_QUALITY    = 12;         // 10–63; lower = better/larger
 constexpr uint32_t FLASH_SETTLE_MS = 120;        // flash on → let exposure settle
+constexpr uint8_t  CAPTURE_RETRIES = 3;          // re-grab if frame looks corrupt
 constexpr uint16_t CAM_HTTP_PORT   = 80;         // ESP32 capture web server port
 
 // ── Status-LED blink timing ──────────────────────────────────────────────────

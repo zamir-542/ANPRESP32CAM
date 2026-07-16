@@ -111,6 +111,11 @@ def store_capture(raw: bytes) -> dict:
     """
     if not raw:
         raise BadImage("empty body")
+    # A JPEG must end with the EOI marker FF D9 — anything else means the
+    # frame was truncated in transit (renders with a black bottom). Reject it
+    # rather than log a half image. (Allow a few trailing pad bytes.)
+    if raw.lstrip()[:2] == b"\xff\xd8" and b"\xff\xd9" not in raw[-6:]:
+        raise BadImage("truncated")
     try:
         Image.open(io.BytesIO(raw)).verify()
     except (UnidentifiedImageError, OSError, ValueError) as exc:

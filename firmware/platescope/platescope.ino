@@ -115,15 +115,40 @@ static bool initCamera() {
   return true;
 }
 
+// A valid JPEG ends with the EOI marker FF D9. A frame that doesn't is
+// corrupt (the classic "bottom of the photo is black" symptom) — reject it
+// on-device instead of shipping garbage to the phone.
+static bool frameLooksComplete(const camera_fb_t* fb) {
+  return fb && fb->len > 2 &&
+         fb->buf[fb->len - 2] == 0xFF && fb->buf[fb->len - 1] == 0xD9;
+}
+
 // GET /capture — fire the flash, grab one JPEG frame, return it as image/jpeg.
 static void handleCapture() {
   digitalWrite(FLASH_LED_PIN, HIGH);
   delay(FLASH_SETTLE_MS);
 
+  // Warm-up: discard one frame so we don't serve a stale pre-flash buffer.
   camera_fb_t* fb = esp_camera_fb_get();
+  if (fb) {
+    esp_camera_fb_return(fb);
+    fb = nullptr;
+  }
+
+  // Grab, verifying integrity; retry a corrupt frame.
+  for (uint8_t attempt = 0; attempt < CAPTURE_RETRIES; attempt++) {
+    fb = esp_camera_fb_get();
+    if (frameLooksComplete(fb)) break;
+    Serial.printf("[CAM] corrupt/empty frame (attempt %u) — retrying\n", attempt + 1);
+    if (fb) {
+      esp_camera_fb_return(fb);
+      fb = nullptr;
+    }
+  }
+
   if (!fb) {
     flashOff();
-    Serial.println("[ERR] capture failed (no framebuffer)");
+    Serial.println("[ERR] capture failed (no complete frame)");
     server.send(500, "text/plain", "capture failed");
     blinkErr();
     return;
