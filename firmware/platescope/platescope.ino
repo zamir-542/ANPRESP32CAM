@@ -186,24 +186,63 @@ static void handleCapture() {
     }
   }
 
-  // Turn the flash off as soon as the frame is in hand — don't hold the
-  // current spike on for the duration of the TCP transfer below.
+  // Turn the flash off as soon as the frame is in hand.
   flashOff();
 
   if (!fb) {
     logLine("[ERR] capture failed (no complete frame)");
     server.send(500, "text/plain", "capture failed");
-    g_blink_pending = BlinkPending::ERR;  // blink after handleClient() returns
+    g_blink_pending = BlinkPending::ERR;
     return;
   }
 
-  logLine(String("[CAM] captured ") + fb->len + " bytes");
+  logLine(String("[CAM] captured ") + fb->len + " bytes — sending ...");
   server.setContentLength(fb->len);
   server.send(200, "image/jpeg", "");
-  server.sendContent((const char*) fb->buf, fb->len);
 
+  // ── Chunked write loop ──────────────────────────────────────────────────
+  // WebServer::sendContent() calls WiFiClient::write(buf, len) once.  For a
+  // large JPEG (100+ KB) that single call can return a short count — however
+  // many bytes fit in the TCP send buffer right now — and the rest are silently
+  // dropped.  The phone then receives a truncated JPEG (bad_image) or an
+  // IncompleteRead that surfaces as camera_unreachable.
+  // Fix: loop until every byte has been handed to the TCP stack or the client
+  // disconnects, using a stall counter to distinguish "buffer full, retry" from
+  // "client gone".
+  {
+    WiFiClient client  = server.client();
+    const uint8_t* ptr = fb->buf;
+    size_t remaining   = fb->len;
+    uint8_t stalls     = 0;
+    const uint8_t MAX_STALLS = 20;       // 20 × 10 ms = 200 ms max stall budget
+    const size_t   CHUNK    = 4096;      // ~2-3 TCP segments per write call
+
+    while (remaining > 0 && stalls < MAX_STALLS) {
+      size_t to_send = (remaining < CHUNK) ? remaining : CHUNK;
+      size_t sent    = client.write(ptr, to_send);
+      if (sent == 0) {
+        delay(10);   // TCP send buffer full — give the stack a moment to drain
+        stalls++;
+        continue;
+      }
+      stalls     = 0;
+      ptr       += sent;
+      remaining -= sent;
+    }
+
+    if (remaining > 0) {
+      logLine(String("[ERR] transfer incomplete — ") + remaining + " bytes unsent");
+      esp_camera_fb_return(fb);
+      g_blink_pending = BlinkPending::ERR;
+      return;
+    }
+    client.flush();  // push any lingering bytes out of the lwIP send buffer
+  }
+  // ── end chunked write ───────────────────────────────────────────────────
+
+  logLine("[CAM] transfer complete");
   esp_camera_fb_return(fb);
-  g_blink_pending = BlinkPending::OK;    // blink after handleClient() returns
+  g_blink_pending = BlinkPending::OK;
 }
 
 
