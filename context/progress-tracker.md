@@ -4,13 +4,16 @@ Update this file after every meaningful implementation change.
 
 ## Current Phase
 
-- **Unit 03 — Camera Capture: implemented; phone half verified host-side;
-  board-side flash pending.**
+- **Unit 03 — Camera Capture: COMPLETE and verified on hardware.** Full capture
+  pipeline works end-to-end on the board (phone tap → flash-lit OV2640 photo →
+  stored + shown on dashboard). Everything except OCR is now done.
 
 ## Current Goal
 
-- Flash Unit 03 to the ESP32-CAM and verify on the bench: `[CAM] init ok`, tap
-  **Capture** on the dashboard → a real photo appears. Then Unit 04 (OCR spike).
+- Start **Unit 04 — OCR feasibility spike**: get a real OCR engine installed and
+  working in Termux (Tesseract first; escalate to EasyOCR / PaddleOCR-ONNX only
+  if plate accuracy is poor), measured on real plate crops. See
+  `context/specs/00-build-plan.md`; the Unit 04 spec still needs writing.
 
 ## Completed
 
@@ -51,26 +54,31 @@ Update this file after every meaningful implementation change.
     "plate":"TEST123","confidence":1.0}`. (First press failed `-1` only because
     `python app.py` wasn't running yet — expected.)
 
+- **Unit 03 — Camera Capture.** Firmware (`platescope.ino`, `pins.h`): SoftAP +
+  `WebServer` on `192.168.4.1/capture` (flash → OV2640 JPEG → `image/jpeg`);
+  button/ISR/dummy/push removed; camera pins in `pins.h`. Phone (`app.py`,
+  `dashboard.html`): `store_capture()` helper, `POST /trigger` pulls from the
+  ESP32 (stdlib `urllib`, no new dep), dashboard **Capture** button; `/upload`
+  kept as a curl test endpoint.
+  - **Verified host-side (8/8):** /trigger success→TEST123, camera_unreachable
+    (502), oversized (413), bad_image (400), /upload 200, dashboard button+card,
+    row count.
+  - **Board-side verified ✅** — camera init clean (`[CAM] init ok`),
+    `http://192.168.4.1/capture` returns a real photo, and the dashboard
+    **Capture** button captures + displays a real photo end-to-end.
+- **Project put under git + pushed to GitHub** (public,
+  https://github.com/zamir-542/ANPRESP32CAM). Phone now syncs via `git pull` in
+  Termux instead of manual copy. Verified no secrets/data/local-settings tracked.
+
 ## In Progress
 
-- **Unit 03 — Camera Capture (board-side flash + verify pending).**
-  - Firmware (`platescope.ino`, `pins.h`): SoftAP + `WebServer` on
-    `192.168.4.1/capture` (flash → OV2640 JPEG → return `image/jpeg`); button/
-    ISR/dummy/push removed. Camera pins added to `pins.h`.
-  - Phone (`app.py`, `dashboard.html`): `store_capture()` helper; `POST /trigger`
-    pulls from the ESP32 (stdlib `urllib`, no new dep); dashboard **Capture**
-    button. `/upload` kept as a curl test endpoint.
-  - **Verified host-side (8/8):** /trigger success→TEST123, camera_unreachable
-    (502), oversized (413), bad_image (400), /upload still 200, dashboard button
-    + card render, row count. (ESP32 mocked by patching `urlopen`.)
-  - Watch on the bench: `pin_sccb`/`sscb` core-version field name, `grab_mode`,
-    and flash brownout (see `firmware/README.md`).
+- None.
 
 ## Next Up
 
-- **Unit 03 — Camera Capture** (real flash-lit JPEG over the wire): swap
-  `DUMMY_JPEG` for the OV2640 framebuffer, add `esp32-camera` init + PSRAM
-  buffer, fire GPIO 4 flash LED at capture, eyeball result on dashboard.
+- **Unit 04 — OCR feasibility spike** (the Termux risk): install a working OCR
+  engine in Termux, expose `read_text(crop) -> (text, confidence)`, measure raw
+  accuracy on real plate crops. Write `context/specs/04-*.md` first.
 
 ## Open Questions
 
@@ -104,6 +112,11 @@ Update this file after every meaningful implementation change.
 
 ## Session Notes
 
+- **GitHub:** https://github.com/zamir-542/ANPRESP32CAM (public, `main`). Phone
+  syncs via `git clone` / `git pull` in Termux. `firmware/**/secrets.h`,
+  `phone/captures/`, `reads.db`, and `.claude/settings.local.json` are gitignored.
+  Commit author email is a placeholder (`zamir@example.com`) — fix + amend if
+  proper GitHub attribution is wanted.
 - Working project name: **PlateScope** (rename freely).
 - Privacy stance: own/consenting vehicles only; blur plate digits in every
   published screenshot/GIF (invariant #5).
