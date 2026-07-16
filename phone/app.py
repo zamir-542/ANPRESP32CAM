@@ -19,6 +19,7 @@ import io
 import os
 import socket
 import sqlite3
+import threading
 import urllib.error
 import urllib.request
 import uuid
@@ -56,6 +57,12 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 class BadImage(Exception):
     """Raised when bytes are empty or not a decodable image."""
+
+
+# Only one capture may be in flight at a time: the ESP32's WebServer is
+# single-threaded, and stacked /trigger requests just queue up on it and make
+# every capture slow. Extra requests get an immediate 429 "busy" instead.
+_capture_lock = threading.Lock()
 
 
 # --- Local log (sqlite3) ----------------------------------------------------
@@ -126,19 +133,24 @@ def store_capture(raw: bytes) -> dict:
 @app.post("/trigger")
 def trigger():
     """Pull a fresh frame from the ESP32 and store it (the real capture flow)."""
+    if not _capture_lock.acquire(blocking=False):
+        return jsonify(ok=False, reason="busy"), 429
     try:
-        with urllib.request.urlopen(ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S) as resp:
-            raw = resp.read(MAX_UPLOAD_BYTES + 1)
-    except (urllib.error.URLError, OSError, socket.timeout):
-        return jsonify(ok=False, reason="camera_unreachable"), 502
+        try:
+            with urllib.request.urlopen(ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S) as resp:
+                raw = resp.read(MAX_UPLOAD_BYTES + 1)
+        except (urllib.error.URLError, OSError, socket.timeout):
+            return jsonify(ok=False, reason="camera_unreachable"), 502
 
-    if len(raw) > MAX_UPLOAD_BYTES:
-        return jsonify(ok=False, reason="too_large"), 413
-    try:
-        rec = store_capture(raw)
-    except BadImage:
-        return jsonify(ok=False, reason="bad_image"), 400
-    return jsonify(ok=True, plate=rec["plate"], confidence=rec["confidence"]), 200
+        if len(raw) > MAX_UPLOAD_BYTES:
+            return jsonify(ok=False, reason="too_large"), 413
+        try:
+            rec = store_capture(raw)
+        except BadImage:
+            return jsonify(ok=False, reason="bad_image"), 400
+        return jsonify(ok=True, plate=rec["plate"], confidence=rec["confidence"]), 200
+    finally:
+        _capture_lock.release()
 
 
 @app.post("/upload")

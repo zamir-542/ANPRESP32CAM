@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="3">
   <title>PlateScope</title>
   <style>
     :root {
@@ -126,7 +125,16 @@
   <script>
     const btn = document.getElementById('capture');
     const status = document.getElementById('status');
+    let capturing = false;
+
+    // Auto-refresh the list every 4 s — but NEVER while a capture is in
+    // flight (a mid-capture reload aborts the request and re-enables the
+    // button, which stacks duplicate requests onto the ESP32).
+    setInterval(() => { if (!capturing) location.reload(); }, 4000);
+
     btn.addEventListener('click', async () => {
+      if (capturing) return;
+      capturing = true;
       btn.disabled = true;
       status.className = '';
       status.textContent = 'Capturing…';
@@ -144,6 +152,7 @@
         status.className = 'err';
         status.textContent = 'Failed: network';
       }
+      capturing = false;
       btn.disabled = false;
     });
   </script>
