@@ -1,6 +1,7 @@
 # Personal data — captured plate imagery and the read log. Never commit.
 phone/captures/
 phone/reads.db
+phone/ocr_test_crops/
 *.db
 
 # Python

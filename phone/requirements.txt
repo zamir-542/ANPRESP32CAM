@@ -9,4 +9,9 @@
 #
 # sqlite3 is stdlib — not listed here.
 flask
-pillow   # guarded JPEG decode (Termux: `pkg install python-pillow`, not pip)
+pillow       # guarded JPEG decode (Termux: `pkg install python-pillow`, not pip)
+
+# Unit 04 — OCR spike (phone/ocr_spike.py). pytesseract is a pure Python
+# wrapper, so pip is fine on Termux; the tesseract OCR binary itself is a
+# separate Termux `pkg install tesseract` (not pip-installable).
+pytesseract
