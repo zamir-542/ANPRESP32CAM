@@ -4,8 +4,8 @@
 // is declared here. No other file may contain a raw pin number or a magic
 // hardware constant.
 //
-// NOTE: credentials (AP_SSID / AP_PASSWORD / SERVER_IP) do NOT live here —
-// they are secrets and belong only in the untracked secrets.h (invariant #3).
+// NOTE: AP_SSID / AP_PASSWORD are Wi-Fi credentials, not hardware constants —
+// they're defined directly in platescope.ino (edit them there before flashing).
 //
 // Reference: context/interface-context.md § Hardware / Embedded (ESP32-CAM)
 

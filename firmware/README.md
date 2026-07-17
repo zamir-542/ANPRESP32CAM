@@ -34,15 +34,14 @@ camera endpoint. The phone joins the network and pulls photos on demand. **There
 is no physical button** — GPIO 0 is the camera clock, so capture is triggered
 from the phone dashboard.
 
-1. Copy `firmware/platescope/secrets.h.example` → `firmware/platescope/secrets.h`.
-2. Fill in `AP_SSID` / `AP_PASSWORD` (the network the ESP32 broadcasts; password
-   ≥ 8 chars). (`SERVER_IP` is unused from Unit 03 — the phone pulls from the
-   ESP32 at the fixed `192.168.4.1`.)
-3. Flash the firmware and open Serial Monitor at 115200.
-4. On the phone: **Wi-Fi settings → join the `AP_SSID` network** (Android warns
+1. Open `firmware/platescope/platescope.ino` and edit the `AP_SSID` /
+   `AP_PASSWORD` `#define`s near the top (marked `EDIT THIS`) — pick your own
+   network name/password (password ≥ 8 chars, WPA2 minimum).
+2. Flash the firmware and open Serial Monitor at 115200.
+3. On the phone: **Wi-Fi settings → join the `AP_SSID` network** (Android warns
    "no internet" — stay connected).
-5. In Termux: `cd phone && python app.py`. Open `http://localhost:8000/`.
-6. Tap **📷 Capture** on the dashboard → a real photo appears.
+4. In Termux: `cd phone && python app.py`. Open `http://localhost:8000/`.
+5. Tap **📷 Capture** on the dashboard → a real photo appears.
 
 ### Known compile snags (version-sensitive)
 
@@ -78,9 +77,7 @@ PlateScope — Unit 03: camera capture (SoftAP + pull)
 ```
 firmware/
   platescope/
-    platescope.ino     ← main sketch
+    platescope.ino     ← main sketch (edit AP_SSID/AP_PASSWORD near the top)
     pins.h             ← all GPIO numbers and timing constants (invariant #1)
-    secrets.h          ← gitignored; WiFi creds + phone IP
-    secrets.h.example  ← committed template with placeholder values
   README.md            ← this file
 ```

@@ -29,15 +29,10 @@ demo.
   ESP32, runs OpenCV plate localization + OCR, validates the result against
   the Malaysian plate pattern, and serves a mobile-first dashboard.
 
-The two sides talk over one HTTP contract (see
-[`context/interface-context.md`](context/interface-context.md)).
-
 ## Status
 
 Camera capture is working end-to-end on real hardware: button press → flash
-→ photo → dashboard. OCR and plate validation are the next milestone. See
-[`context/progress-tracker.md`](context/progress-tracker.md) for the
-up-to-date unit-by-unit status.
+→ photo → dashboard. OCR and plate validation are the next milestone.
 
 ## Getting started
 
@@ -50,7 +45,6 @@ up-to-date unit-by-unit status.
 ```
 firmware/    ESP32-CAM sketch (Arduino C++) — WiFi AP, flash-lit capture
 phone/       Flask app (Python, runs in Termux) — pull, recognize, dashboard
-context/     Planning docs, architecture decisions, build-unit specs
 ```
 
 ## Design constraints

@@ -1,7 +1,3 @@
-# Secrets — WiFi credentials + phone IP (Unit 02). Never commit.
-# Pattern covers firmware/<sketch>/secrets.h at any nesting depth.
-firmware/**/secrets.h
-
 # Personal data — captured plate imagery and the read log. Never commit.
 phone/captures/
 phone/reads.db
@@ -15,3 +11,6 @@ venv/
 
 # Local settings (personal, not shared)
 .claude/
+
+# Internal planning/context docs — kept locally to continue work, never pushed.
+context/

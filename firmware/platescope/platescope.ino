@@ -11,14 +11,20 @@
 // "Capture" button is the trigger now.
 //
 // Invariants upheld:
-//   #all GPIO numbers are in pins.h, none appear here.
-
+//   #1 — all GPIO numbers are in pins.h, none appear here.
+//   #4 — self-contained LAN over the ESP32's own AP; no cloud.
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include "esp_camera.h"
 #include "pins.h"
-#include "secrets.h"
+
+// ── Wi-Fi AP credentials ─────────────────────────────────────────────────────
+// EDIT THIS: pick your own SSID/password before flashing. This is the network
+// the ESP32 broadcasts — the phone joins it (there's no router involved).
+// Password must be at least 8 characters (WPA2 minimum).
+#define AP_SSID     "PlateScope-AP"
+#define AP_PASSWORD "changeme123"
 
 WebServer server(CAM_HTTP_PORT);
 
