@@ -22,7 +22,7 @@ Update this file after every meaningful implementation change.
 - Context files written: `project-overview.md`, `architecture.md`,
   `interface-context.md`, `code-standards.md`, `ai-workflow-rules.md`, this
   tracker.
-- Root `CLAUDE.md`, `context/specs/00-build-plan.md`, and
+- Project specification context, `context/specs/00-build-plan.md`, and
   `context/specs/01-phone-server-skeleton.md` written.
 - **Unit 01 — Phone server skeleton.** `phone/app.py` (Flask), `templates/
   dashboard.html`, `requirements.txt`, `README.md`, root `.gitignore`. Decode
@@ -149,7 +149,7 @@ Update this file after every meaningful implementation change.
 
 - **GitHub:** https://github.com/zamir-542/ANPRESP32CAM (public, `main`). Phone
   syncs via `git clone` / `git pull` in Termux. `firmware/**/secrets.h`,
-  `phone/captures/`, `reads.db`, and `.claude/settings.local.json` are gitignored.
+  `phone/captures/` and `reads.db` are gitignored.
   Commit author email is a placeholder (`zamir@example.com`) — fix + amend if
   proper GitHub attribution is wanted.
 - Working project name: **PlateScope** (rename freely).

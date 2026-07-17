@@ -5,8 +5,7 @@
 Build incrementally using a spec-driven workflow. The `context/` files define
 what to build, how it fits together, and the current state. Always implement
 against the current unit spec in `context/specs/` — do not infer or invent
-behavior from scratch. Read the six context files (in the order listed in
-`CLAUDE.md`) before writing code or making an architectural decision.
+behavior from scratch. Read the six context files before writing code or making an architectural decision.
 
 ## Scoping Rules
 
