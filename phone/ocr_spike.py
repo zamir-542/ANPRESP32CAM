@@ -36,19 +36,21 @@ from PIL import Image
 # uniform block, sparse text.
 CANDIDATE_PSMS = (7, 8, 6, 11)
 
-# Whitelisting A-Z0-9 measurably helps accuracy on short strings with no
-# lowercase/punctuation; confirmed on real-device testing it doesn't hurt any
-# PSM's ability to read a correct crop.
-WHITELIST_CONFIG = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+# No character whitelist: confirmed on real-device testing (Tesseract 5.5.2)
+# that `-c tessedit_char_whitelist=...` still reads correct text but zeroes
+# out confidence on the LSTM engine (a real 0, not "-1 no data") — a whitelist
+# predates LSTM and doesn't integrate cleanly with it. Dropping it restored
+# real confidence scores with no loss of correctness; post-processing below
+# already normalizes to uppercase/alphanumeric-only, so the whitelist wasn't
+# doing anything a whitelist-free read + normalize doesn't already do.
 
 _NON_ALNUM_RE = re.compile(r"[^A-Z0-9]")
 
 
 def _read_with_psm(image: Image.Image, psm: int) -> tuple[str, float]:
     """Single OCR attempt at one PSM. Returns (normalized_text, confidence)."""
-    config = f"--psm {psm} {WHITELIST_CONFIG}"
     data = pytesseract.image_to_data(
-        image, config=config, output_type=pytesseract.Output.DICT
+        image, config=f"--psm {psm}", output_type=pytesseract.Output.DICT
     )
     words: list[str] = []
     confidences: list[float] = []
