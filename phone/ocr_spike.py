@@ -27,27 +27,28 @@ from pathlib import Path
 import pytesseract
 from PIL import Image
 
-# --- Tunables (single source of truth for this spike) ----------------------
-# --psm 7: treat the crop as a single line of text (plates are one line).
+# --- Tunables (single source of truth for this spike) -----------------------
+# No single PSM (page segmentation mode) generalizes across hand-cropped
+# plate images: framing varies crop to crop (tight vs. padded, letters/digits
+# glued together vs. gapped), and real-device testing found crops that came
+# back "Empty page!!" under one PSM but read correctly under another. Try
+# each candidate and keep the best result. Order: single line, single word,
+# uniform block, sparse text.
+CANDIDATE_PSMS = (7, 8, 6, 11)
+
 # Whitelisting A-Z0-9 measurably helps accuracy on short strings with no
-# lowercase/punctuation.
-TESSERACT_CONFIG = (
-    "--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-)
+# lowercase/punctuation; confirmed on real-device testing it doesn't hurt any
+# PSM's ability to read a correct crop.
+WHITELIST_CONFIG = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 _NON_ALNUM_RE = re.compile(r"[^A-Z0-9]")
 
 
-def read_text(image: Image.Image) -> tuple[str, float]:
-    """OCR a single plate crop.
-
-    Returns (normalized_text, confidence). text is uppercase with all
-    non-alphanumeric characters stripped. confidence is the mean word-level
-    Tesseract confidence, mapped from its native 0-100 scale to 0-1; 0.0 if
-    nothing was detected.
-    """
+def _read_with_psm(image: Image.Image, psm: int) -> tuple[str, float]:
+    """Single OCR attempt at one PSM. Returns (normalized_text, confidence)."""
+    config = f"--psm {psm} {WHITELIST_CONFIG}"
     data = pytesseract.image_to_data(
-        image, config=TESSERACT_CONFIG, output_type=pytesseract.Output.DICT
+        image, config=config, output_type=pytesseract.Output.DICT
     )
     words: list[str] = []
     confidences: list[float] = []
@@ -62,6 +63,25 @@ def read_text(image: Image.Image) -> tuple[str, float]:
     text = _NON_ALNUM_RE.sub("", "".join(words).upper())
     confidence = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0
     return text, confidence
+
+
+def read_text(image: Image.Image) -> tuple[str, float]:
+    """OCR a single plate crop, trying every PSM in CANDIDATE_PSMS.
+
+    Returns the (normalized_text, confidence) of whichever PSM attempt
+    produced non-empty text with the highest confidence. text is uppercase
+    with all non-alphanumeric characters stripped. confidence is the mean
+    word-level Tesseract confidence, mapped from 0-100 to 0-1. Returns
+    ("", 0.0) if every PSM attempt came back empty.
+    """
+    # -1 sentinel (not 0.0): a valid attempt can legitimately score 0.0
+    # confidence and must still beat "no attempt has found text yet".
+    best_text, best_confidence = "", -1.0
+    for psm in CANDIDATE_PSMS:
+        text, confidence = _read_with_psm(image, psm)
+        if text and confidence > best_confidence:
+            best_text, best_confidence = text, confidence
+    return (best_text, best_confidence) if best_text else ("", 0.0)
 
 
 def _expected_plate(filename: str) -> str | None:
