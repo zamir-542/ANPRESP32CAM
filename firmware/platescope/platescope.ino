@@ -11,9 +11,8 @@
 // "Capture" button is the trigger now.
 //
 // Invariants upheld:
-//   #1 — all GPIO numbers are in pins.h, none appear here.
-//   #3 — AP credentials + phone IP live in secrets.h (gitignored).
-//   #4 — self-contained LAN over the ESP32's own AP; no cloud.
+//   #all GPIO numbers are in pins.h, none appear here.
+
 
 #include <WiFi.h>
 #include <WebServer.h>
