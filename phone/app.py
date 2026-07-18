@@ -1,14 +1,15 @@
 """PlateScope phone server.
 
-Flask app that stores + logs camera captures and serves a dashboard at GET /.
-Two ways a capture arrives:
+Flask app that recognizes + logs camera captures and serves a dashboard at
+GET /. Two ways a capture arrives:
   - POST /trigger  (Unit 03, the real flow): the phone PULLS a fresh frame from
-    the ESP32's /capture endpoint, then stores it.
+    the ESP32's /capture endpoint, then recognizes it.
   - POST /upload   (Unit 02, kept as a curl-able test endpoint): a JPEG is pushed
     in as multipart/form-data.
 
-Recognition is still stubbed: every stored capture is logged as plate "TEST123".
-Real localization + OCR arrive in Unit 05.
+Recognition is real (Unit 05): pipeline.recognize() localizes the plate, reads
+it with OCR, and validates the Malaysian format. A capture with no valid plate
+is reported as no_plate (never a bogus string — invariant #6) and is not logged.
 
 LAN-only: binds to HOST below; never expose this to the internet.
 """
@@ -36,6 +37,8 @@ from flask import (
 )
 from PIL import Image, UnidentifiedImageError
 
+import pipeline
+
 # --- Configuration (single source of truth) --------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CAPTURES_DIR = os.path.join(BASE_DIR, "captures")
@@ -57,9 +60,6 @@ CAPTURE_TIMEOUT_S = 15
 # shows climbing uptime) one honest failure is better than a duplicate capture.
 CAPTURE_ATTEMPTS = 1
 RETRY_DELAY_S = 1.5       # kept for future use; unused when CAPTURE_ATTEMPTS==1
-
-STUB_PLATE = "TEST123"              # placeholder; real plate arrives in Unit 05
-STUB_CONFIDENCE = 1.0
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
@@ -114,10 +114,15 @@ def init_storage() -> None:
 
 # --- Core: validate, save, log a capture ------------------------------------
 def store_capture(raw: bytes) -> dict:
-    """Guard-decode `raw`, save it, log a (stub) read, return the record.
+    """Guard-decode `raw`, recognize a plate, and (if found) save + log it.
 
-    Raises BadImage if the bytes are empty or not a decodable image. The caller
-    is responsible for enforcing MAX_UPLOAD_BYTES before calling.
+    Raises BadImage if the bytes are empty or not a decodable image. Returns
+    {"plate": None} when the frame decoded fine but held no valid plate —
+    nothing is saved or logged in that case (invariant #6: no bogus plate).
+    On a valid plate, saves the plate crop and logs a row, returning
+    {"id", "plate", "confidence"}.
+
+    The caller is responsible for enforcing MAX_UPLOAD_BYTES before calling.
     """
     if not raw:
         raise BadImage("empty body")
@@ -131,17 +136,21 @@ def store_capture(raw: bytes) -> dict:
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise BadImage("undecodable") from exc
 
+    result = pipeline.recognize(raw)
+    if result.plate is None or result.crop_jpeg is None:
+        return {"plate": None}
+
     read_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:8]}"
     with open(os.path.join(CAPTURES_DIR, f"{read_id}.jpg"), "wb") as fh:
-        fh.write(raw)
+        fh.write(result.crop_jpeg)
 
     db = get_db()
     db.execute(
         "INSERT INTO reads (id, plate, confidence, created_at) VALUES (?, ?, ?, ?)",
-        (read_id, STUB_PLATE, STUB_CONFIDENCE, datetime.now(timezone.utc).isoformat()),
+        (read_id, result.plate, result.confidence, datetime.now(timezone.utc).isoformat()),
     )
     db.commit()
-    return {"id": read_id, "plate": STUB_PLATE, "confidence": STUB_CONFIDENCE}
+    return {"id": read_id, "plate": result.plate, "confidence": result.confidence}
 
 
 # --- Routes -----------------------------------------------------------------
@@ -171,6 +180,8 @@ def trigger():
             rec = store_capture(raw)
         except BadImage:
             return jsonify(ok=False, reason="bad_image"), 400
+        if rec["plate"] is None:
+            return jsonify(ok=False, reason="no_plate"), 200
         return jsonify(ok=True, plate=rec["plate"], confidence=rec["confidence"]), 200
     finally:
         _capture_lock.release()
@@ -180,6 +191,8 @@ def trigger():
 def upload():
     """Test-only push endpoint: a JPEG as multipart/form-data field 'image'.
 
+      valid plate               -> 200 {"ok":true,"plate":...,"confidence":...}
+      no valid plate            -> 200 {"ok":false,"reason":"no_plate"}
       too large                 -> 413 {"ok":false,"reason":"too_large"}
       missing/undecodable image -> 400 {"ok":false,"reason":"bad_image"}
     """
@@ -190,6 +203,8 @@ def upload():
         rec = store_capture(file.read())
     except BadImage:
         return jsonify(ok=False, reason="bad_image"), 400
+    if rec["plate"] is None:
+        return jsonify(ok=False, reason="no_plate"), 200
     return jsonify(ok=True, plate=rec["plate"], confidence=rec["confidence"]), 200
 
 

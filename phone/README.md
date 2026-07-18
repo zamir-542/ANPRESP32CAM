@@ -1,8 +1,10 @@
 # PlateScope — Phone Server
 
-The phone-side compute node. In Unit 01 this is a Flask app that receives a JPEG
-at `POST /upload`, saves it, logs a **stub** read (`TEST123`), and serves a
-dashboard of reads at `GET /`. Real localization + OCR arrive in later units.
+The phone-side compute node: a Flask app that receives a captured JPEG,
+**localizes the plate (OpenCV), reads it (Tesseract), and validates the
+Malaysian format** (`pipeline.py`), logs the valid read, and serves a
+dashboard of reads at `GET /`. A frame with no valid plate is reported as
+`no_plate` and not logged (invariant #6 — never a bogus plate).
 
 **LAN-only.** The server binds to `0.0.0.0:8000` so the ESP32 on the same WiFi can
 reach it. Do not port-forward or tunnel it to the internet (invariant #4).
@@ -11,24 +13,24 @@ reach it. Do not port-forward or tunnel it to the internet (invariant #4).
 
 ```sh
 pkg update
-pkg install python python-pillow    # Pillow must come from pkg, NOT pip
+pkg install python python-pillow python-opencv python-numpy   # C-ext: pkg, NOT pip
+pkg install tesseract               # OCR engine binary (Unit 04)
 cd phone
-pip install flask                   # pure Python — pip is fine
+pip install flask pytesseract       # pure Python — pip is fine
 ```
 
-> **Do not `pip install pillow` on Termux** — pip tries to compile it from C
-> source and fails with *"Failed building wheel for pillow"*. Termux ships a
-> prebuilt `python-pillow`; install that with `pkg` instead. Rule of thumb on
-> Termux: anything with a C extension → `pkg install`; pure Python → `pip`.
+> **Do not `pip install pillow`/`opencv`/`numpy` on Termux** — pip tries to
+> compile them from C source and fails (e.g. *"Failed building wheel for
+> pillow"*). Termux ships prebuilt `python-pillow` / `python-opencv` /
+> `python-numpy`; install those with `pkg`. Rule of thumb on Termux: anything
+> with a C extension → `pkg install`; pure Python (flask, pytesseract) → `pip`.
 
-Verify both import before running:
+Verify everything imports before running:
 
 ```sh
-python -c "import flask, PIL; print('flask + pillow OK', PIL.__version__)"
+python -c "import flask, PIL, cv2, numpy, pytesseract; print('deps OK')"
+tesseract --version
 ```
-
-(OpenCV is deliberately deferred to Unit 05; when it arrives it's
-`pkg install python-opencv`, again not pip.)
 
 ## Run
 
@@ -80,47 +82,33 @@ The ESP32 will POST to `http://<that-ip>:8000/upload`.
 ## Quick test (from a PC on the same network)
 
 ```sh
-curl -F "image=@sample.jpg" http://<phone-ip>:8000/upload
-# -> {"ok":true,"plate":"TEST123","confidence":1.0}
+curl -F "image=@plate.jpg" http://<phone-ip>:8000/upload
+# valid plate  -> {"ok":true,"plate":"WXY1234","confidence":0.87}
+# no plate     -> {"ok":false,"reason":"no_plate"}
 ```
 
-Then open `http://<phone-ip>:8000/` in a browser — the capture appears
-newest-first, auto-refreshing every 3 seconds.
+Then open `http://<phone-ip>:8000/` in a browser — a valid read appears
+newest-first (plate crop + text + confidence), auto-refreshing every 4 s.
 
-## Unit 04 — OCR spike
+## OCR accuracy harness (`ocr.py`)
 
-Standalone feasibility check for `phone/ocr_spike.py` — not wired into
-`app.py` yet (that's Unit 05). Proves Tesseract runs in Termux and measures
-its raw read accuracy on real plate crops.
+`phone/ocr.py` holds `read_text(crop)` — the OCR step `pipeline.py` calls —
+and doubles as a standalone accuracy harness (originally the Unit 04
+Tesseract feasibility spike). To re-measure read accuracy on a folder of
+crops, name each file with the plate it should read (`WXY1234.jpg`, or
+`WXY1234_02.jpg` for a second sample of the same plate) and put them under
+`phone/ocr_test_crops/` (gitignored — plate images are personal data, same
+as `captures/`):
 
 ```sh
-pkg install tesseract        # the OCR binary — pkg, not pip
-pip install pytesseract      # pure Python wrapper — pip is fine
+python ocr.py ocr_test_crops
 ```
 
-Verify the binary installed:
-
-```sh
-tesseract --version
-```
-
-Gather a handful of real plate crops (e.g. cropped by hand from Unit 03
-captures) into a folder, naming each file with the plate it should read —
-`WXY1234.jpg`, or `WXY1234_02.jpg` for a second sample of the same plate.
-Put them under `phone/ocr_test_crops/` (gitignored — plate images are
-personal data, same as `captures/`).
-
-```sh
-python ocr_spike.py ocr_test_crops
-```
-
-Prints a per-crop read + confidence, and an overall accuracy line. Record the
-result in `context/progress-tracker.md` along with the go/no-go call: keep
-Tesseract, or escalate to EasyOCR/PaddleOCR-ONNX per the build plan.
+Prints a per-crop read + confidence, and an overall accuracy line.
 
 ## Notes
 
 - `captures/`, `reads.db`, and `ocr_test_crops/` hold captured imagery /
   plate data (personal data) and are gitignored — never commit them.
-- Pin versions here once they settle (Flask, Pillow, pytesseract) for
-  reproducibility.
+- Pin versions here once they settle (Flask, Pillow, pytesseract, OpenCV,
+  numpy) for reproducibility.

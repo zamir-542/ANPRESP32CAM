@@ -146,8 +146,14 @@
           location.reload();
           return;
         }
-        status.className = 'err';
-        status.textContent = 'Failed: ' + (data.reason || res.status);
+        if (data.reason === 'no_plate') {
+          // A normal outcome, not a failure — keep the neutral (muted) tone.
+          status.className = '';
+          status.textContent = 'No plate found';
+        } else {
+          status.className = 'err';
+          status.textContent = 'Failed: ' + (data.reason || res.status);
+        }
       } catch (e) {
         status.className = 'err';
         status.textContent = 'Failed: network';

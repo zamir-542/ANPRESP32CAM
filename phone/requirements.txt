@@ -11,7 +11,14 @@
 flask
 pillow       # guarded JPEG decode (Termux: `pkg install python-pillow`, not pip)
 
-# Unit 04 — OCR spike (phone/ocr_spike.py). pytesseract is a pure Python
-# wrapper, so pip is fine on Termux; the tesseract OCR binary itself is a
-# separate Termux `pkg install tesseract` (not pip-installable).
+# Unit 04 — OCR (phone/ocr.py). pytesseract is a pure Python wrapper, so pip
+# is fine on Termux; the tesseract OCR binary itself is a separate Termux
+# `pkg install tesseract` (not pip-installable).
 pytesseract
+
+# Unit 05 — localization (phone/pipeline.py). C-extension packages: on Termux
+# install the prebuilt builds instead of pip (`pkg install python-opencv
+# python-numpy`). On a desktop venv, pip works as listed. numpy comes
+# transitively with pip opencv but is listed for Termux clarity.
+opencv-python-headless
+numpy

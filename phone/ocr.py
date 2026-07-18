@@ -1,15 +1,18 @@
-"""Unit 04 — OCR feasibility spike.
+"""OCR: read a plate crop with Tesseract.
 
-Standalone script (not imported by app.py). Proves an OCR engine actually
-runs in Termux and measures its raw read accuracy on real plate crops.
+`read_text(crop) -> (text, confidence)` is the OCR step of the recognition
+pipeline (imported by pipeline.py, Unit 05). This module started as the Unit
+04 feasibility spike that proved Tesseract runs in Termux; the CLI harness
+below is kept for re-measuring accuracy on a folder of named crops.
 
 Engine: Tesseract via pytesseract — the build plan's first choice
-(context/specs/00-build-plan.md, Unit 04). Escalate to EasyOCR or
-PaddleOCR-ONNX only if the accuracy measured here is poor; if that happens,
-update this docstring and architecture.md with the new choice.
+(context/specs/00-build-plan.md, Unit 04), confirmed at 75% on real crops.
+Escalate to EasyOCR or PaddleOCR-ONNX only if accuracy proves insufficient;
+if that happens, update this docstring and architecture.md with the new
+choice.
 
-Usage:
-    python ocr_spike.py <crops_dir>
+CLI usage (accuracy harness):
+    python ocr.py <crops_dir>
 
 Each file in <crops_dir> is a single plate crop (JPEG/PNG). If a filename
 encodes the expected plate text before the first underscore (e.g.
@@ -132,6 +135,6 @@ def main(crops_dir: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("usage: python ocr_spike.py <crops_dir>")
+        print("usage: python ocr.py <crops_dir>")
         sys.exit(1)
     main(sys.argv[1])
