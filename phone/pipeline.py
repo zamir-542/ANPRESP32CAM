@@ -48,9 +48,12 @@ MAX_CANDIDATES = 5      # localized boxes to OCR, best-ranked first
 CROP_PAD_FRAC = 0.08    # padding around a localized box before cropping
 
 # A read is only accepted if it clears this confidence AND matches the regex.
-# 0.35 sits below the 0.57 a correct Unit 04 read scored and above the 0.46
-# the misread scored — a Unit 06 tuning knob.
-OCR_CONFIDENCE_MIN = 0.35
+# On-device screen captures of BHV33 separated cleanly by confidence: correct
+# reads 0.77 / 0.85, format-valid misreads (GHV44, B33) 0.42 / 0.48. 0.60
+# threads that gap — the misreads become no_plate (better than a confident
+# wrong plate, invariant #6) while correct reads pass with margin. Provisional:
+# laptop-screen data; re-tune on real plates in Unit 06.
+OCR_CONFIDENCE_MIN = 0.60
 
 JPEG_QUALITY = 90  # quality of the saved plate-crop thumbnail
 
