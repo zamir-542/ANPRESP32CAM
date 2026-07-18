@@ -16,7 +16,10 @@ plate — recognize() reports no plate (Result.plate is None) instead.
 
 from __future__ import annotations
 
+import os
 import re
+import sys
+import time
 from dataclasses import dataclass
 
 import cv2
@@ -24,6 +27,34 @@ import numpy as np
 from PIL import Image
 
 from ocr import read_text
+
+# --- Debug / observability (Unit 06) ----------------------------------------
+# Off by default. Turn on with `PLATESCOPE_DEBUG=1 python app.py` (or before
+# running the batch harness). When on, recognize() prints per-candidate reads
+# to stderr and saves the frame + candidate crops of a no_plate miss under
+# DEBUG_DIR — turning an opaque "No plate found" into "localization found 0
+# boxes" vs "found a box, OCR read 'GHV44' @0.42, rejected". Normal runs are
+# unaffected: no stderr noise, no disk writes, same return values.
+DEBUG = os.environ.get("PLATESCOPE_DEBUG") == "1"
+DEBUG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug")
+
+
+def _debug(msg: str) -> None:
+    if DEBUG:
+        print(f"[recognize] {msg}", file=sys.stderr)
+
+
+def _save_debug_frame(bgr: np.ndarray, boxes: list[tuple[int, int, int, int]]) -> None:
+    """Save a no_plate frame + its localized crops for eyeballing (DEBUG only)."""
+    stamp = time.strftime("%Y%m%dT%H%M%S") + f"-{int(time.time() * 1000) % 1000:03d}"
+    out = os.path.join(DEBUG_DIR, stamp)
+    os.makedirs(out, exist_ok=True)
+    cv2.imwrite(os.path.join(out, "frame.jpg"), bgr)
+    for i, box in enumerate(boxes):
+        crop = _crop(bgr, box)
+        if crop.size:
+            cv2.imwrite(os.path.join(out, f"box{i}.jpg"), crop)
+    _debug(f"saved no_plate artifacts to {out}")
 
 # --- Tunables (single source of truth) --------------------------------------
 # Malaysian Peninsular format: 1-3 letters, 1-4 digits, optional trailing
@@ -146,27 +177,45 @@ def recognize(jpeg_bytes: bytes) -> Result:
     arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
     bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if bgr is None:
+        _debug("decode failed — not a valid image")
         return Result(None, 0.0, None)
 
     # Localized crops first (ranked), then the whole frame as a last-resort
     # fallback: read_text is strong on tight, plate-filling crops, so this
     # degrades gracefully when localization misses. Every candidate passes the
     # same regex + confidence gate, so the fallback can only add a valid read.
-    candidates = [_crop(bgr, box) for box in _localize(bgr)]
-    candidates.append(bgr)
+    boxes = _localize(bgr)
+    candidates = [(f"box{i} {box}", _crop(bgr, box)) for i, box in enumerate(boxes)]
+    candidates.append(("full-frame", bgr))
+    _debug(f"localization found {len(boxes)} box(es)")
 
     best: tuple[float, str, np.ndarray] | None = None
-    for crop in candidates:
+    for label, crop in candidates:
         if crop.size == 0:
+            _debug(f"  {label}: empty crop, skipped")
             continue
         text, confidence = read_text(_bgr_to_pil(crop))
-        if not MALAYSIAN_PLATE_RE.match(text) or confidence < OCR_CONFIDENCE_MIN:
-            continue
+        regex_ok = bool(MALAYSIAN_PLATE_RE.match(text))
+        conf_ok = confidence >= OCR_CONFIDENCE_MIN
+        eligible = regex_ok and conf_ok
         # Strict '>' keeps earlier (localized) candidates on a confidence tie.
-        if best is None or confidence > best[0]:
+        is_best = eligible and (best is None or confidence > best[0])
+        if is_best:
             best = (confidence, text, crop)
+        if DEBUG:
+            if not regex_ok:
+                verdict = "reject:format"
+            elif not conf_ok:
+                verdict = f"reject:conf<{OCR_CONFIDENCE_MIN}"
+            else:
+                verdict = "accept" + (" *best" if is_best else "")
+            _debug(f"  {label}: read='{text}' conf={confidence:.2f} -> {verdict}")
 
     if best is None:
+        _debug("result: no_plate")
+        if DEBUG:
+            _save_debug_frame(bgr, boxes)
         return Result(None, 0.0, None)
     confidence, plate, crop_bgr = best
+    _debug(f"result: {plate} @ {confidence:.2f}")
     return Result(plate=plate, confidence=confidence, crop_jpeg=_encode_jpeg(crop_bgr))

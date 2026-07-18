@@ -2,6 +2,10 @@
 phone/captures/
 phone/reads.db
 phone/ocr_test_crops/
+# real full-frame ESP32 captures for Unit 06 tuning
+phone/test_frames/
+# DEBUG-mode failed-frame artifacts (Unit 06)
+phone/debug/
 *.db
 
 # Python

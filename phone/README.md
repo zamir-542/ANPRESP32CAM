@@ -116,9 +116,64 @@ python ocr.py ocr_test_crops
 
 Prints a per-crop read + confidence, and an overall accuracy line.
 
+## Unit 06 tuning tools (whole-pipeline, on real frames)
+
+`ocr.py` scores OCR on already-tight crops. To measure the **full** pipeline
+(localize → OCR → validate) on real captures — and to tune `pipeline.py`'s
+thresholds — use these two, both fully on the phone (no image ever leaves it).
+
+### Collect real frames
+
+Grab full frames straight off the ESP32 (each hit fires the flash and returns
+a fresh JPEG), naming each by the true plate, into the gitignored
+`phone/test_frames/`:
+
+```sh
+mkdir -p test_frames
+curl http://192.168.4.1/capture -o test_frames/BHV33.jpg
+curl http://192.168.4.1/capture -o test_frames/BHV33_02.jpg
+# ... one per shot
+```
+
+### Batch harness (`recognize_test.py`)
+
+Runs the whole recognizer on every frame in a folder and prints a scored
+table — `boxes` = how many regions localization found, so a miss is
+diagnosable at a glance:
+
+```sh
+python recognize_test.py test_frames
+# file            boxes read     conf  verdict
+# BHV33.jpg           2 BHV33    0.85  OK
+# WA1234B.jpg         0 -        0.00  no_plate (exp WA1234B)   <- localization missed
+# ...
+# accuracy: 4/6 (67%)
+```
+
+### DEBUG trace
+
+For per-candidate detail (every read + why it was rejected), set
+`PLATESCOPE_DEBUG=1`. It works for the live server and the harness, printing to
+the console; a `no_plate` capture also saves the frame + candidate crops under
+the gitignored `phone/debug/` for eyeballing:
+
+```sh
+PLATESCOPE_DEBUG=1 python app.py
+# ... tap Capture, then read the console:
+# [recognize] localization found 1 box(es)
+# [recognize]   box0 (166,197,276,97): read='GHV44' conf=0.42 -> reject:conf<0.6
+# [recognize]   full-frame: read='' conf=0.00 -> reject:format
+# [recognize] result: no_plate
+```
+
+That turns "No plate found" into either *localization missed* (0 boxes) or
+*OCR/threshold* (found a box, read something, rejected) — which is what tells
+us whether to tune the localizer or the OCR path.
+
 ## Notes
 
-- `captures/`, `reads.db`, and `ocr_test_crops/` hold captured imagery /
-  plate data (personal data) and are gitignored — never commit them.
+- `captures/`, `reads.db`, `ocr_test_crops/`, `test_frames/`, and `debug/`
+  hold captured imagery / plate data (personal data) and are gitignored —
+  never commit them.
 - Pin versions here once they settle (Flask, Pillow, pytesseract, OpenCV,
   numpy) for reproducibility.
