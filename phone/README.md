@@ -13,17 +13,27 @@ reach it. Do not port-forward or tunnel it to the internet (invariant #4).
 
 ```sh
 pkg update
-pkg install python python-pillow python-opencv python-numpy   # C-ext: pkg, NOT pip
+pkg install python python-pillow python-numpy   # C-ext deps: pkg, NOT pip
 pkg install tesseract               # OCR engine binary (Unit 04)
+pkg install x11-repo                 # OpenCV is in the x11 repo, not main
+pkg install opencv-python dbus       # cv2 (+ opencv, numpy) and the libdbus-1.so it loads
 cd phone
 pip install flask pytesseract       # pure Python — pip is fine
 ```
 
-> **Do not `pip install pillow`/`opencv`/`numpy` on Termux** — pip tries to
-> compile them from C source and fails (e.g. *"Failed building wheel for
-> pillow"*). Termux ships prebuilt `python-pillow` / `python-opencv` /
-> `python-numpy`; install those with `pkg`. Rule of thumb on Termux: anything
-> with a C extension → `pkg install`; pure Python (flask, pytesseract) → `pip`.
+> **OpenCV on Termux is not obvious — steps verified on a Galaxy Note 8:**
+> - It is **not** in the main repo (and not in TUR). It lives in **`x11-repo`**
+>   — `pkg install x11-repo` first, then `pkg install opencv-python` (the
+>   package is `opencv-python`, *not* `python-opencv`; it pulls in `opencv` +
+>   `python-numpy`).
+> - `import cv2` then fails with `libdbus-1.so not found` until you also
+>   `pkg install dbus` (cv2's GUI backend links it; it isn't pulled in
+>   automatically).
+>
+> **Do not `pip install pillow`/`opencv`/`numpy` on Termux** — pip compiles
+> them from C source and fails. Use the prebuilt `pkg` builds above. Rule of
+> thumb: C-extension package → `pkg install`; pure Python (flask, pytesseract)
+> → `pip`.
 
 Verify everything imports before running:
 

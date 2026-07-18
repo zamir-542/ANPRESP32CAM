@@ -16,9 +16,10 @@ pillow       # guarded JPEG decode (Termux: `pkg install python-pillow`, not pip
 # `pkg install tesseract` (not pip-installable).
 pytesseract
 
-# Unit 05 — localization (phone/pipeline.py). C-extension packages: on Termux
-# install the prebuilt builds instead of pip (`pkg install python-opencv
-# python-numpy`). On a desktop venv, pip works as listed. numpy comes
-# transitively with pip opencv but is listed for Termux clarity.
+# Unit 05 — localization (phone/pipeline.py). These pip names are for a
+# DESKTOP venv only. On TERMUX, do NOT pip-install them — OpenCV lives in the
+# x11 repo and needs a runtime lib (see phone/README.md § Setup):
+#     pkg install x11-repo
+#     pkg install opencv-python dbus   # opencv-python pulls opencv + python-numpy
 opencv-python-headless
 numpy
