@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import socket
 import sqlite3
 import threading
@@ -43,6 +44,9 @@ import pipeline
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CAPTURES_DIR = os.path.join(BASE_DIR, "captures")
 DB_PATH = os.path.join(BASE_DIR, "reads.db")
+# Unit 06 tuning: /collect saves raw labeled frames here (gitignored). Not part
+# of the recognition flow — a dev aid for gathering test frames off the ESP32.
+TEST_FRAMES_DIR = os.path.join(BASE_DIR, "test_frames")
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024  # 2 MB hard cap on a stored image
 HOST = "0.0.0.0"                    # LAN-only; do not port-forward / tunnel
@@ -153,6 +157,31 @@ def store_capture(raw: bytes) -> dict:
     return {"id": read_id, "plate": result.plate, "confidence": result.confidence}
 
 
+# --- ESP32 frame fetch (shared by /trigger and /collect) --------------------
+def _fetch_frame() -> bytes | None:
+    """Pull one JPEG from the ESP32; None if unreachable. Caller holds the lock."""
+    for attempt in range(CAPTURE_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(
+                ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S
+            ) as resp:
+                return resp.read(MAX_UPLOAD_BYTES + 1)
+        except (urllib.error.URLError, OSError, socket.timeout):
+            if attempt + 1 < CAPTURE_ATTEMPTS:
+                time.sleep(RETRY_DELAY_S)  # give the AP link a beat to recover
+    return None
+
+
+def _next_frame_name(label: str) -> str:
+    """First free `<label>.jpg` / `<label>_NN.jpg` in TEST_FRAMES_DIR (no clobber)."""
+    if not os.path.exists(os.path.join(TEST_FRAMES_DIR, f"{label}.jpg")):
+        return f"{label}.jpg"
+    i = 2
+    while os.path.exists(os.path.join(TEST_FRAMES_DIR, f"{label}_{i:02d}.jpg")):
+        i += 1
+    return f"{label}_{i:02d}.jpg"
+
+
 # --- Routes -----------------------------------------------------------------
 @app.post("/trigger")
 def trigger():
@@ -160,17 +189,7 @@ def trigger():
     if not _capture_lock.acquire(blocking=False):
         return jsonify(ok=False, reason="busy"), 429
     try:
-        raw = None
-        for attempt in range(CAPTURE_ATTEMPTS):
-            try:
-                with urllib.request.urlopen(
-                    ESP32_CAPTURE_URL, timeout=CAPTURE_TIMEOUT_S
-                ) as resp:
-                    raw = resp.read(MAX_UPLOAD_BYTES + 1)
-                break
-            except (urllib.error.URLError, OSError, socket.timeout):
-                if attempt + 1 < CAPTURE_ATTEMPTS:
-                    time.sleep(RETRY_DELAY_S)  # give the AP link a beat to recover
+        raw = _fetch_frame()
         if raw is None:
             return jsonify(ok=False, reason="camera_unreachable"), 502
 
@@ -216,6 +235,44 @@ def capture(read_id: str):
     itself rejects traversal and returns 404 for a missing file.
     """
     return send_from_directory(CAPTURES_DIR, f"{os.path.basename(read_id)}.jpg")
+
+
+# --- Unit 06 tuning: labeled frame collection (dev aid, not the demo flow) ---
+@app.get("/collect")
+def collect_page():
+    """A tiny form: type a plate, press Enter, save a labeled frame."""
+    return render_template("collect.html")
+
+
+@app.post("/collect")
+def collect():
+    """Pull a frame from the ESP32 and save it RAW to test_frames/<plate>.jpg.
+
+    No recognition — this gathers ground-truth-labeled frames for
+    recognize_test.py. The plate is normalized to A-Z0-9 for the filename.
+    """
+    label = re.sub(r"[^A-Z0-9]", "", (request.form.get("plate") or "").upper())
+    if not label:
+        return jsonify(ok=False, reason="no_label"), 400
+    if not _capture_lock.acquire(blocking=False):
+        return jsonify(ok=False, reason="busy"), 429
+    try:
+        raw = _fetch_frame()
+        if raw is None:
+            return jsonify(ok=False, reason="camera_unreachable"), 502
+        if len(raw) > MAX_UPLOAD_BYTES:
+            return jsonify(ok=False, reason="too_large"), 413
+        # Reject an obviously truncated JPEG (no EOI) so we don't save garbage;
+        # otherwise keep the frame raw (a real test sample, warts and all).
+        if not (raw.lstrip()[:2] == b"\xff\xd8" and b"\xff\xd9" in raw[-6:]):
+            return jsonify(ok=False, reason="bad_image"), 400
+        os.makedirs(TEST_FRAMES_DIR, exist_ok=True)
+        name = _next_frame_name(label)
+        with open(os.path.join(TEST_FRAMES_DIR, name), "wb") as fh:
+            fh.write(raw)
+        return jsonify(ok=True, saved=name), 200
+    finally:
+        _capture_lock.release()
 
 
 @app.get("/")

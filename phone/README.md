@@ -124,9 +124,15 @@ thresholds — use these two, both fully on the phone (no image ever leaves it).
 
 ### Collect real frames
 
-Grab full frames straight off the ESP32 (each hit fires the flash and returns
-a fresh JPEG), naming each by the true plate, into the gitignored
-`phone/test_frames/`:
+Grab full frames straight off the ESP32 (each capture fires the flash) into the
+gitignored `phone/test_frames/`, named by the true plate. Two ways:
+
+**Web form (easiest)** — open `http://localhost:8000/collect` on the phone:
+type the plate, press **Enter**, and it captures + saves
+`test_frames/<PLATE>.jpg` automatically (a repeat plate becomes `_02`, `_03`,
+…). Aim, type, Enter; aim, type, Enter.
+
+**curl** — the manual equivalent (name each file by the plate yourself):
 
 ```sh
 mkdir -p test_frames
